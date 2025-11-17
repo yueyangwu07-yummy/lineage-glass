@@ -106,7 +106,7 @@ class LineageConfig:
     on_unresolved: ErrorMode = ErrorMode.WARN
 
     # Complexity limits
-    max_expression_nodes: int = 1000  # Maximum nodes per expression
+    max_expression_nodes: int = 1500  # Maximum nodes per expression
     max_expression_depth: int = 50  # Maximum nesting depth
     max_case_branches: int = 100  # Maximum CASE branches
     on_complexity_exceeded: ErrorMode = ErrorMode.FAIL  # Behavior when limits exceeded

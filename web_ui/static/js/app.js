@@ -42,7 +42,159 @@ fileInput.addEventListener('change', (e) => {
     }
 });
 
+// ==================== Example SQL Data ====================
+const exampleSQLs = {
+    ecommerce: `-- E-Commerce Analytics Pipeline
+-- Trace: customer_segments.lifetime_value for complex multi-level lineage
+
+CREATE TABLE clean_orders AS
+SELECT 
+    order_id,
+    customer_id,
+    quantity * unit_price AS subtotal,
+    quantity * unit_price * tax_rate AS tax_amount,
+    quantity * unit_price * (1 + tax_rate) AS total_amount
+FROM raw_orders;
+
+CREATE TABLE customer_summary AS
+SELECT 
+    customer_id,
+    COUNT(order_id) as total_orders,
+    SUM(total_amount) as lifetime_value,
+    AVG(total_amount) as avg_order_value
+FROM clean_orders
+GROUP BY customer_id;
+
+CREATE TABLE customer_segments AS
+SELECT 
+    cs.customer_id,
+    c.name,
+    cs.lifetime_value,
+    CASE 
+        WHEN cs.lifetime_value > 10000 THEN 'VIP'
+        WHEN cs.lifetime_value > 5000 THEN 'Premium'
+        ELSE 'Regular'
+    END AS customer_tier
+FROM customer_summary cs
+JOIN customers c ON cs.customer_id = c.customer_id;`,
+
+    hierarchy: `-- Organizational Hierarchy with Recursive CTE
+-- Trace: org_report.hierarchy_path to see recursive lineage
+
+WITH RECURSIVE employee_hierarchy AS (
+    SELECT 
+        emp_id,
+        name,
+        1 as level,
+        name as hierarchy_path
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        e.emp_id,
+        e.name,
+        eh.level + 1,
+        eh.hierarchy_path || ' > ' || e.name
+    FROM employees e
+    JOIN employee_hierarchy eh ON e.manager_id = eh.emp_id
+)
+CREATE TABLE org_report AS
+SELECT * FROM employee_hierarchy;`,
+
+    subqueries: `-- Sales Analysis with Multiple Subqueries
+-- Trace: sales_analysis.avg_discount to see subquery composition
+
+CREATE TABLE sales_analysis AS
+SELECT 
+    p.product_id,
+    p.product_name,
+    (SELECT SUM(quantity * unit_price) 
+     FROM order_items oi 
+     WHERE oi.product_id = p.product_id) as total_revenue,
+    (SELECT AVG(unit_price) 
+     FROM order_items oi 
+     WHERE oi.product_id = p.product_id) as avg_price,
+    p.list_price - (SELECT AVG(unit_price) 
+                    FROM order_items oi 
+                    WHERE oi.product_id = p.product_id) as avg_discount
+FROM products p;`,
+
+    union: `-- Multi-Source Revenue Report
+-- Trace: revenue_report.total_revenue to see UNION sources
+
+WITH 
+online_sales AS (
+    SELECT product_id, quantity * unit_price as revenue, 'online' as channel
+    FROM online_orders
+),
+store_sales AS (
+    SELECT product_id, quantity * sale_price as revenue, 'store' as channel
+    FROM store_transactions
+),
+all_sales AS (
+    SELECT * FROM online_sales
+    UNION ALL
+    SELECT * FROM store_sales
+)
+CREATE TABLE revenue_report AS
+SELECT 
+    product_id,
+    channel,
+    SUM(revenue) as total_revenue
+FROM all_sales
+GROUP BY product_id, channel;`,
+
+    nested: `-- Nested Derived Tables with Multi-level Aggregation
+-- Trace: advanced_metrics.revenue_per_active_day for deep nesting
+
+CREATE TABLE advanced_metrics AS
+SELECT 
+    daily.customer_id,
+    daily.avg_daily_spending,
+    monthly.total_monthly_revenue,
+    monthly.total_monthly_revenue / daily.days_active as revenue_per_active_day
+FROM (
+    SELECT 
+        customer_id,
+        COUNT(DISTINCT order_date) as days_active,
+        AVG(daily_total) as avg_daily_spending
+    FROM (
+        SELECT 
+            customer_id,
+            order_date,
+            SUM(order_amount) as daily_total
+        FROM orders
+        GROUP BY customer_id, order_date
+    ) daily_orders
+    GROUP BY customer_id
+) daily
+JOIN (
+    SELECT 
+        customer_id,
+        SUM(order_amount) as total_monthly_revenue
+    FROM orders
+    GROUP BY customer_id
+) monthly ON daily.customer_id = monthly.customer_id;`
+};
+
 // ==================== Load Example Button ====================
+document.getElementById('load-example-btn').addEventListener('click', () => {
+    const selector = document.getElementById('example-selector');
+    const exampleKey = selector.value;
+    
+    if (exampleKey && exampleSQLs[exampleKey]) {
+        document.getElementById('sql-input').value = exampleSQLs[exampleKey];
+        switchTab('text');
+        
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        alert('Please select an example first');
+    }
+});
+
 document.getElementById('load-example').addEventListener('click', async () => {
     try {
         showLoading();

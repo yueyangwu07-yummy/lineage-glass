@@ -92,7 +92,19 @@ JOIN sales_summary ss ON p.id = ss.product_id;"></textarea>
             </div>
             
             <!-- Quick Actions -->
-            <div class="mt-2 text-sm">
+            <div class="mt-2 flex gap-2 text-sm items-center">
+                <span class="text-gray-600">Quick examples:</span>
+                <select id="example-selector" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                    <option value="">-- Select an example --</option>
+                    <option value="ecommerce">E-Commerce Pipeline (Multi-level)</option>
+                    <option value="hierarchy">Org Hierarchy (Recursive CTE)</option>
+                    <option value="subqueries">Sales Analysis (Subqueries)</option>
+                    <option value="union">Revenue Report (UNION + CTE)</option>
+                    <option value="nested">Advanced Metrics (Nested)</option>
+                </select>
+                <button id="load-example-btn" class="text-blue-600 hover:underline">
+                    Load
+                </button>
                 <button id="load-example" class="text-blue-600 hover:underline">
                     Load example SQL
                 </button>
