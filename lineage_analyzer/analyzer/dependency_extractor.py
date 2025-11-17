@@ -761,7 +761,17 @@ class DependencyExtractor:
         first_branch = branches[0]
         if isinstance(first_branch, expressions.Select):
             first_branch_exprs = get_select_expressions(first_branch)
-            ordered_targets = [self._get_target_column_name(expr) for expr in first_branch_exprs]
+            
+            # Check if first branch has SELECT * (Star expression)
+            has_star = any(self._is_star_expression(expr) for expr in first_branch_exprs)
+            
+            if has_star and first_branch_deps:
+                # SELECT * case: use target column names from dependencies
+                # The dependencies were created from the expanded columns
+                ordered_targets = list(first_branch_targets.keys())
+            else:
+                # Regular SELECT: use target names from expressions
+                ordered_targets = [self._get_target_column_name(expr) for expr in first_branch_exprs]
         else:
             # If first branch is also a Union, we need to handle it differently
             # For now, use the target column names we found
@@ -780,9 +790,24 @@ class DependencyExtractor:
                 # Get dependencies for this position from this branch
                 # We need to map by position, not by name
                 branch_exprs = get_select_expressions(branches[branch_idx])
-                if pos < len(branch_exprs):
-                    # Get target name for this position in this branch
-                    branch_target = self._get_target_column_name(branch_exprs[pos])
+                
+                # Check if this branch has SELECT * (Star expression)
+                has_star = any(self._is_star_expression(expr) for expr in branch_exprs)
+                
+                if has_star:
+                    # SELECT * case: match by target column name directly
+                    # The dependencies were created with target columns matching the source columns
+                    # SELECT * expands to multiple columns, so we match by target name, not position
+                    for dep in branch_deps:
+                        if dep.target.column == target_name:
+                            all_sources.append(dep.source)
+                            expression_types.append(dep.expression_type)
+                            expressions_text.append(dep.expression)
+                            confidences.append(dep.confidence)
+                elif pos < len(branch_exprs):
+                    # Regular SELECT: match by target name from expression
+                    branch_expr = branch_exprs[pos]
+                    branch_target = self._get_target_column_name(branch_expr)
                     
                     # Find dependencies for this target in this branch
                     for dep in branch_deps:
