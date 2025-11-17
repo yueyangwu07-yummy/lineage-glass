@@ -202,6 +202,20 @@ class DependencyExtractor:
                     elif hasattr(expr.table, "this"):
                         table_qualifier = expr.table.this
                 
+                # If no table qualifier (SELECT *), try to get from FROM clause
+                if table_qualifier is None and isinstance(ast, expressions.Select):
+                    from_clause = ast.args.get("from")
+                    if from_clause and from_clause.this:
+                        # Extract table name from FROM clause
+                        from lineage_analyzer.utils.ast_utils import extract_table_name
+                        try:
+                            table_name, alias = extract_table_name(from_clause.this)
+                            # Use alias if present, otherwise use table name
+                            table_qualifier = alias if alias else table_name
+                        except Exception:
+                            # If extraction fails, table_qualifier remains None
+                            pass
+                
                 # Resolve star column
                 if hasattr(self.resolver, "resolve_star_column"):
                     star_columns = self.resolver.resolve_star_column(table_qualifier)
@@ -303,21 +317,48 @@ class DependencyExtractor:
                     expression_text = self._get_expression_text(expr)
 
                     # 5. Create dependency for each source column
-                    for source_col, confidence in source_columns_conf.items():
+                    # If there are no source columns (e.g., constant), still create a dependency
+                    # with a placeholder source so the column can be referenced
+                    if source_columns_conf:
+                        for source_col, confidence in source_columns_conf.items():
+                            target_col = ColumnRef(
+                                table="__OUTPUT__",  # Output columns use special table name
+                                column=target_name,
+                                alias=None,
+                            )
+
+                            dependency = ColumnDependency(
+                                source=source_col,
+                                target=target_col,
+                                expression_type=expr_type,
+                                expression=expression_text,
+                                confidence=confidence,
+                            )
+
+                            self.dependencies.append(dependency)
+                    else:
+                        # No source columns (constant or computed from constants)
+                        # Still create a dependency entry so the column exists
+                        # Use a placeholder source that indicates this is a constant/computed value
                         target_col = ColumnRef(
-                            table="__OUTPUT__",  # Output columns use special table name
+                            table="__OUTPUT__",
                             column=target_name,
                             alias=None,
                         )
-
+                        # Create a placeholder source (will be filtered out during conversion)
+                        # The important thing is that the target column exists
+                        placeholder_source = ColumnRef(
+                            table="__CONSTANT__",
+                            column=target_name,
+                            alias=None,
+                        )
                         dependency = ColumnDependency(
-                            source=source_col,
+                            source=placeholder_source,
                             target=target_col,
                             expression_type=expr_type,
                             expression=expression_text,
-                            confidence=confidence,
+                            confidence=1.0,
                         )
-
                         self.dependencies.append(dependency)
 
         # Process WHERE clause subqueries
@@ -689,6 +730,9 @@ class DependencyExtractor:
                 
                 # Create resolver and extractor for this branch
                 branch_resolver = SymbolResolver(branch_scope, self.config, schema_provider)
+                # IMPORTANT: Attach registry to resolver for SELECT * expansion (CTEs)
+                if registry:
+                    branch_resolver.registry = registry
                 branch_extractor = DependencyExtractor(branch_scope, branch_resolver, self.config)
             else:
                 # For nested Union, use current scope (will be handled recursively)

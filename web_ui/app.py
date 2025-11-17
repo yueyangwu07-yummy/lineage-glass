@@ -147,7 +147,7 @@ def serialize_tables(registry):
 
 def generate_graph_data(registry):
     """
-    Generate graph data for Cytoscape.js
+    Generate graph data for Cytoscape.js (improved version)
     
     Returns:
     {
@@ -204,6 +204,11 @@ def generate_graph_data(registry):
                     }
                 })
                 edge_set.add(edge_id)
+    
+    # Debug output
+    print(f"[GRAPH] Table-level graph: {len(nodes)} nodes, {len(edges)} edges", flush=True)
+    for edge in edges:
+        print(f"   {edge['data']['source']} -> {edge['data']['target']}", flush=True)
     
     return {
         'nodes': nodes,
@@ -300,7 +305,7 @@ def field_lineage(table, column):
 
 def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=10):
     """
-    Recursively trace field lineage path
+    Recursively trace field lineage path (supports multi-source fields and expression columns)
     
     Parameters:
         result: ScriptAnalysisResult object
@@ -326,13 +331,9 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
     if visited is None:
         visited = set()
     
-    # Prevent infinite recursion
     if level >= max_depth:
+        print(f"[WARN] Max depth reached for {table}.{column}", flush=True)
         return []
-    
-    # Debug: Log deep recursion
-    if level > 5:
-        print(f"[DEBUG] Deep recursion: level={level}, table={table}, column={column}", flush=True)
     
     # Normalize table name (registry uses lowercase)
     table_normalized = table.lower().strip()
@@ -340,6 +341,7 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
     # Build node key
     key = f"{table_normalized}.{column}"
     if key in visited:
+        print(f"[WARN] Cycle detected: {key} already visited", flush=True)
         return []  # Avoid cycles
     visited.add(key)
     
@@ -347,6 +349,7 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
     table_def = result.registry.tables.get(table_normalized)
     if not table_def:
         # External table (no definition), treat as leaf node
+        print(f"[INFO] {table}.{column} is external table (leaf node)", flush=True)
         return [{
             'level': level,
             'table': table_normalized,
@@ -363,6 +366,7 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
         # If table is EXTERNAL type, treat missing columns as leaf nodes (source fields)
         from lineage_analyzer.models.table_definition import TableType
         if table_def.table_type == TableType.EXTERNAL:
+            print(f"[INFO] {table}.{column} not found in EXTERNAL table (leaf node)", flush=True)
             return [{
                 'level': level,
                 'table': table_normalized,
@@ -374,13 +378,18 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
                 'sources': []
             }]
         # For other table types, return empty if column not found
+        print(f"[WARN] Column {column} not found in table {table}", flush=True)
         return []
     
     col_lineage = table_def.columns[column]
     
-    # Debug: Check sources
-    # col_lineage.sources is a list of ColumnRef objects
-    sources_list = col_lineage.sources if hasattr(col_lineage, 'sources') else []
+    # Debug output
+    print(f"[TRACE] Tracing {table}.{column}:", flush=True)
+    print(f"   Expression: {col_lineage.expression}", flush=True)
+    print(f"   Expression type: {col_lineage.expression_type}", flush=True)
+    print(f"   Source columns: {len(col_lineage.sources)}", flush=True)
+    for src in col_lineage.sources:
+        print(f"     - {src.table}.{src.column}", flush=True)
     
     # Build current node
     node = {
@@ -395,12 +404,24 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
     }
     
     # Recursively trace source fields
-    if sources_list and len(sources_list) > 0:
-        for src in sources_list:
+    if col_lineage.sources:
+        for src in col_lineage.sources:
             # Check if already visited before recursing (early exit optimization)
             src_key = f"{src.table.lower().strip()}.{src.column}"
             if src_key in visited:
-                continue  # Skip if already visited
+                print(f"[WARN] Source {src.table}.{src.column} already visited, skipping", flush=True)
+                # Still add as leaf node to show the connection
+                node['sources'].append({
+                    'level': level + 1,
+                    'table': src.table.lower().strip(),
+                    'column': src.column,
+                    'transformation': None,
+                    'is_aggregate': False,
+                    'aggregate_function': None,
+                    'is_group_by': False,
+                    'sources': []
+                })
+                continue
             
             # Create a new visited set copy for each source branch
             # This allows different branches to explore independently
@@ -416,13 +437,29 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
             
             if src_path:
                 node['sources'].extend(src_path)
+            else:
+                # If recursive trace failed, at least add source node itself
+                print(f"[WARN] Failed to trace {src.table}.{src.column}, adding as leaf", flush=True)
+                node['sources'].append({
+                    'level': level + 1,
+                    'table': src.table.lower().strip(),
+                    'column': src.column,
+                    'transformation': None,
+                    'is_aggregate': False,
+                    'aggregate_function': None,
+                    'is_group_by': False,
+                    'sources': []
+                })
+    else:
+        # No source columns, this is a leaf node
+        print(f"[INFO] {table}.{column} has no source columns (leaf node)", flush=True)
     
     return [node]
 
 
 def build_field_graph(path_nodes):
     """
-    Convert field lineage path to Cytoscape graph data
+    Convert field lineage path to Cytoscape graph data (improved version)
     
     Parameters:
         path_nodes: List of nodes returned by trace_field_lineage
@@ -473,7 +510,7 @@ def build_field_graph(path_nodes):
             node_ids.add(node_id)
         
         # Add edge (from source to target)
-        if parent_id:
+        if parent_id and parent_id != node_id:  # Add check: avoid self-loops
             edge_id = f"{node_id}->{parent_id}"
             
             if edge_id not in edge_set:
@@ -481,7 +518,7 @@ def build_field_graph(path_nodes):
                 edge_label = ''
                 if node.get('transformation'):
                     # Simplify transformation expression (avoid too long)
-                    trans = node['transformation']
+                    trans = str(node['transformation'])
                     if len(trans) > 30:
                         trans = trans[:27] + '...'
                     edge_label = trans
@@ -506,10 +543,56 @@ def build_field_graph(path_nodes):
     for node in path_nodes:
         process_node(node)
     
+    # Debug output
+    print(f"[GRAPH] Built field graph: {len(nodes)} nodes, {len(edges)} edges", flush=True)
+    
     return {
         'nodes': nodes,
         'edges': edges
     }
+
+
+@app.route('/api/debug/table/<table_name>', methods=['GET'])
+def debug_table(table_name):
+    """Debug API: View detailed table information"""
+    global current_analysis_result
+    
+    if not current_analysis_result:
+        return jsonify({'error': 'No analysis result'}), 400
+    
+    table_def = current_analysis_result.registry.tables.get(table_name)
+    if not table_def:
+        return jsonify({'error': f'Table {table_name} not found'}), 404
+    
+    # Get dependencies (source tables)
+    dependencies = set()
+    for col_lineage in table_def.columns.values():
+        if col_lineage.sources:
+            for src in col_lineage.sources:
+                dependencies.add(src.table)
+    
+    return jsonify({
+        'name': table_name,
+        'type': table_def.table_type.value if table_def.table_type else 'UNKNOWN',
+        'column_count': len(table_def.columns),
+        'columns': list(table_def.columns.keys()),
+        'dependencies': list(dependencies),
+        'dependency_count': len(dependencies),
+        'column_details': {
+            col_name: {
+                'sources': [
+                    {'table': src.table, 'column': src.column}
+                    for src in col_lineage.sources
+                ],
+                'expression': col_lineage.expression,
+                'expression_type': col_lineage.expression_type.value if hasattr(col_lineage.expression_type, 'value') else str(col_lineage.expression_type),
+                'is_aggregate': col_lineage.is_aggregate,
+                'aggregate_function': col_lineage.aggregate_function,
+                'is_group_by': col_lineage.is_group_by
+            }
+            for col_name, col_lineage in table_def.columns.items()
+        }
+    })
 
 
 if __name__ == '__main__':

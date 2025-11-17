@@ -202,6 +202,24 @@ class CreateTableAnalyzer:
         else:
             table_type = TableType.TABLE
 
+        # Convert __OUTPUT__ references to actual table name (same-table references)
+        # e.g., level_bonus -> __OUTPUT__.level should become level_bonus -> org_chart.level
+        for col_lineage in column_lineages:
+            updated_sources = []
+            for src in col_lineage.sources:
+                if src.table == "__OUTPUT__":
+                    # Convert to actual table name
+                    from lineage_analyzer.models.column import ColumnRef
+                    updated_src = ColumnRef(
+                        table=target_table,
+                        column=src.column,
+                        alias=None,
+                    )
+                    updated_sources.append(updated_src)
+                else:
+                    updated_sources.append(src)
+            col_lineage.sources = updated_sources
+
         table_def = TableDefinition(
             name=target_table,
             columns={col.name: col for col in column_lineages},
@@ -290,6 +308,7 @@ class CreateTableAnalyzer:
         - ColumnDependency is v0.1 output format (single dependency edge)
         - ColumnLineage is v1.0 format (complete lineage for one column)
         - Need to merge multiple dependencies into one lineage
+        - Preserve same-table column references (e.g., level_bonus -> level)
 
         Example:
             dependencies = [
@@ -319,13 +338,32 @@ class CreateTableAnalyzer:
             target_name = dep.target.column
             grouped[target_name].append(dep)
 
+        # Get all target column names (for same-table reference detection)
+        target_column_names = set(grouped.keys())
+
         # Build ColumnLineage for each target column
         lineages = []
         for target_name, deps in grouped.items():
             # Collect all source columns
             sources = []
             for dep in deps:
-                sources.append(dep.source)
+                # Check if source column matches an output column (same-table reference)
+                # e.g., if we have SELECT level, level * 10000 as level_bonus,
+                # and dep.source is from a table but matches output column "level",
+                # create a reference to the output column instead
+                if (dep.source.table != "__OUTPUT__" and 
+                    dep.source.column in target_column_names and
+                    dep.source.column != target_name):
+                    # Same-table reference: create reference to output column
+                    from lineage_analyzer.models.column import ColumnRef
+                    output_col_ref = ColumnRef(
+                        table="__OUTPUT__",
+                        column=dep.source.column,
+                        alias=None,
+                    )
+                    sources.append(output_col_ref)
+                else:
+                    sources.append(dep.source)
 
             # Extract expression (use first dependency's expression)
             # Note: All dependencies for the same target column should have
@@ -373,8 +411,13 @@ class CreateTableAnalyzer:
         # This ensures transitive tracing works even after CTEs are removed
         # We need to recursively expand because CTEs may reference other CTEs
         changed = True
-        while changed:
+        max_iterations = 10  # Prevent infinite loops
+        iteration = 0
+        
+        while changed and iteration < max_iterations:
             changed = False
+            iteration += 1
+            
             for table_def in self.registry.get_all_tables():
                 # Skip CTE tables themselves (we'll remove them anyway)
                 if table_def.name in cte_tables:
@@ -384,23 +427,71 @@ class CreateTableAnalyzer:
                     # Check if this column references any CTE
                     expanded_sources = []
                     needs_expansion = False
+                    cte_references = []  # Track CTE references for debugging
+                    
                     for source in col_lineage.sources:
                         if source.table in cte_tables:
                             # This source is a CTE column, expand it
                             needs_expansion = True
+                            cte_references.append(f"{source.table}.{source.column}")
                             cte_table = cte_tables[source.table]
                             if cte_table.has_column(source.column):
                                 cte_col_lineage = cte_table.get_column(source.column)
                                 # Add CTE column's sources (may include other CTEs)
-                                expanded_sources.extend(cte_col_lineage.sources)
+                                if cte_col_lineage.sources:
+                                    expanded_sources.extend(cte_col_lineage.sources)
+                                else:
+                                    # CTE column has no sources (e.g., constant or computed from constants)
+                                    # For constants, we don't expand - they remain as constants
+                                    # The CTE reference will be removed, leaving 0 sources (which is correct for constants)
+                                    # Don't create placeholder sources for constants
+                                    pass
+                            else:
+                                # CTE column not found - this shouldn't happen, but keep original source
+                                expanded_sources.append(source)
                         else:
                             # Not a CTE column, keep it as is
                             expanded_sources.append(source)
 
                     # Update column lineage with expanded sources (if changed)
-                    if needs_expansion and expanded_sources != col_lineage.sources:
-                        col_lineage.sources = expanded_sources
-                        changed = True  # Mark that we changed something, need another pass
+                    if needs_expansion:
+                        # Deduplicate sources
+                        seen = set()
+                        unique_sources = []
+                        for src in expanded_sources:
+                            key = src.to_qualified_name()
+                            if key not in seen:
+                                seen.add(key)
+                                unique_sources.append(src)
+                        
+                        # Preserve same-table column references
+                        # If a source is from the same table and different column, keep it
+                        # This handles cases like level_bonus -> level in the same table
+                        for src in col_lineage.sources:
+                            if src.table == table_def.name and src.column != col_name:
+                                # Same-table reference - preserve it
+                                key = src.to_qualified_name()
+                                if key not in seen:
+                                    seen.add(key)
+                                    unique_sources.append(src)
+                            elif src.table == "__OUTPUT__" and src.column != col_name:
+                                # __OUTPUT__ reference should have been converted to table name
+                                # But if it's still here, it's a same-table reference
+                                # Convert it to the actual table name
+                                from lineage_analyzer.models.column import ColumnRef
+                                table_src = ColumnRef(
+                                    table=table_def.name,
+                                    column=src.column,
+                                    alias=None,
+                                )
+                                key = table_src.to_qualified_name()
+                                if key not in seen:
+                                    seen.add(key)
+                                    unique_sources.append(table_src)
+                        
+                        if unique_sources != col_lineage.sources:
+                            col_lineage.sources = unique_sources
+                            changed = True  # Mark that we changed something, need another pass
 
         # Now remove CTEs from Registry
         for cte_name in cte_tables.keys():

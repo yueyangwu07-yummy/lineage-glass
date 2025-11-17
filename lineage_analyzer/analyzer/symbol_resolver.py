@@ -1024,7 +1024,8 @@ class SymbolResolver:
                 
                 # Fallback to schema provider
                 if not table_columns:
-                    table_columns = self.schema.get_table_columns(table_name)
+                    if self.schema:
+                        table_columns = self.schema.get_table_columns(table_name)
                 for col_name in table_columns:
                     # Deduplicate: if column name appears in multiple tables,
                     # only include it once (from first table)

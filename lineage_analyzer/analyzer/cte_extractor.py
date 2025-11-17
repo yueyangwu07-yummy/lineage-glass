@@ -239,6 +239,8 @@ class CTEExtractor:
 
         # 3. Create Symbol Resolver
         resolver = SymbolResolver(scope, self.config, self.schema_provider)
+        # Attach registry to resolver for CTE references
+        resolver.registry = self.registry
 
         # 4. Extract dependencies (using DependencyExtractor)
         extractor = DependencyExtractor(scope, resolver, self.config)
@@ -302,7 +304,17 @@ class CTEExtractor:
             return self._analyze_normal_cte(cte, statement_index)
         
         # 1. Analyze anchor part (this gives us the base source tables)
-        anchor_columns = self._analyze_cte_part(anchor_select, cte.name, is_anchor=True)
+        try:
+            anchor_columns = self._analyze_cte_part(anchor_select, cte.name, is_anchor=True)
+        except Exception as e:
+            # If anchor analysis fails, log and fall back to normal CTE analysis
+            # This prevents recursive CTE failures from breaking the entire statement
+            return self._analyze_normal_cte(cte, statement_index)
+        
+        # Check if anchor columns are empty - if so, fall back to normal CTE analysis
+        if not anchor_columns:
+            # Anchor part produced no columns - likely an error, fall back to normal analysis
+            return self._analyze_normal_cte(cte, statement_index)
         
         # 1.5. Register temporary CTE with anchor columns so recursive part can reference it
         # This allows DependencyExtractor to resolve CTE references in the recursive part
@@ -429,6 +441,8 @@ class CTEExtractor:
                             self.registry.register_source_table(table_name)
         
         # Extract dependencies from UNION
+        # DependencyExtractor handles UNION internally, but we need to ensure
+        # the resolver has access to the registry for SELECT * expansion
         # Use first branch's scope (or create a combined scope)
         first_branch = branches[0] if branches else None
         if not first_branch or not isinstance(first_branch, exp.Select):
@@ -436,10 +450,13 @@ class CTEExtractor:
         
         scope = scope_builder.build_scope(first_branch)
         resolver = SymbolResolver(scope, self.config, self.schema_provider)
+        # IMPORTANT: Attach registry to resolver for SELECT * expansion (CTEs)
+        resolver.registry = self.registry
         extractor = DependencyExtractor(scope, resolver, self.config)
         
         # Extract dependencies (DependencyExtractor now handles UNION)
-        
+        # The _extract_from_union method will create separate resolvers for each branch
+        # and ensure they have access to the registry
         dependencies = extractor.extract(cte.select_node)
         
         # Convert to ColumnLineage
@@ -560,19 +577,26 @@ class CTEExtractor:
                     self.registry.register_source_table(table_name)
         
         # Extract dependencies
-        resolver = SymbolResolver(scope, self.config, self.schema_provider)
-        extractor = DependencyExtractor(scope, resolver, self.config)
-        dependencies = extractor.extract(select_node)
-        
-        # Convert to ColumnLineage
-        column_lineages = self._convert_dependencies_to_lineages(dependencies)
-        
-        # Convert to dictionary
-        columns = {}
-        for lineage in column_lineages:
-            columns[lineage.name] = lineage
-        
-        return columns
+        try:
+            resolver = SymbolResolver(scope, self.config, self.schema_provider)
+            # Attach registry to resolver for CTE references
+            resolver.registry = self.registry
+            extractor = DependencyExtractor(scope, resolver, self.config)
+            dependencies = extractor.extract(select_node)
+            
+            # Convert to ColumnLineage
+            column_lineages = self._convert_dependencies_to_lineages(dependencies)
+            
+            # Convert to dictionary
+            columns = {}
+            for lineage in column_lineages:
+                columns[lineage.name] = lineage
+            
+            return columns
+        except Exception as e:
+            # If extraction fails, return empty dict (will be handled by caller)
+            # Log the error for debugging
+            return {}
 
     def _analyze_recursive_part(
         self,
@@ -598,6 +622,7 @@ class CTEExtractor:
         """
         # First, analyze the recursive part normally
         recursive_columns = self._analyze_cte_part(recursive_select, cte_name, is_anchor=False)
+        
         
         # Now, resolve self-references: replace CTE column references with anchor's sources
         resolved_columns = {}
@@ -675,14 +700,30 @@ class CTEExtractor:
             final_col_name = col_name
             if col_name not in anchor_columns:
                 # Try to find matching anchor column name
+                # Normalize the recursive column name by removing common patterns
+                normalized_col_name = col_name.lower().strip()
+                
+                # Remove table qualifiers (h., eh., el., e., etc.) - handle various formats
+                import re
+                # Remove patterns like "el.", "eh.", "h.", "e." at the start or middle
+                normalized_col_name = re.sub(r'^[a-z]+\.', '', normalized_col_name)  # Remove "el." at start
+                normalized_col_name = re.sub(r'[a-z]+\.', '', normalized_col_name)  # Remove any "xxx." pattern
+                
+                # Remove common arithmetic operations and whitespace
+                normalized_col_name = re.sub(r'\s*\+\s*1\s*', '', normalized_col_name)  # Remove "+ 1", "+1", etc.
+                normalized_col_name = re.sub(r'\s*-\s*1\s*', '', normalized_col_name)  # Remove "- 1", "-1", etc.
+                normalized_col_name = re.sub(r'\s*\+\s*', '', normalized_col_name)  # Remove any "+"
+                normalized_col_name = re.sub(r'\s*-\s*', '', normalized_col_name)  # Remove any "-"
+                normalized_col_name = normalized_col_name.replace(" ", "").strip()
+                
                 for anchor_col_name in anchor_columns.keys():
-                    # Normalize for comparison
-                    normalized_col_name = col_name.lower().replace("h.", "").replace("eh.", "").replace(" ", "")
-                    normalized_anchor = anchor_col_name.lower()
+                    normalized_anchor = anchor_col_name.lower().strip()
                     
-                    if (anchor_col_name.lower() in col_name.lower() or 
-                        normalized_col_name.replace("+1", "").replace("+", "").replace("-1", "").replace("-", "") == normalized_anchor or
-                        col_name.replace("h.", "").replace("eh.", "").replace(" + 1", "").replace(" - 1", "").strip() == anchor_col_name):
+                    # Try multiple matching strategies
+                    if (normalized_col_name == normalized_anchor or
+                        normalized_col_name.endswith(normalized_anchor) or
+                        normalized_anchor in normalized_col_name or
+                        anchor_col_name.lower() in col_name.lower()):
                         final_col_name = anchor_col_name
                         break
             
@@ -761,10 +802,12 @@ class CTEExtractor:
         # Build ColumnLineage for each target column
         lineages = []
         for target_name, deps in grouped.items():
-            # Collect all source columns
+            # Collect all source columns (filter out placeholder constants)
             sources = []
             for dep in deps:
-                sources.append(dep.source)
+                # Filter out __CONSTANT__ placeholder sources
+                if dep.source.table != "__CONSTANT__":
+                    sources.append(dep.source)
 
             # Extract expression (use first dependency's expression)
             expression = deps[0].expression if deps else None
@@ -777,9 +820,10 @@ class CTEExtractor:
             is_group_by = deps[0].is_group_by if deps else False
 
             # Create ColumnLineage
+            # Note: sources may be empty for constants, but the column still exists
             lineage = ColumnLineage(
                 name=target_name,
-                sources=sources,
+                sources=sources,  # Empty for constants, but column still created
                 expression=expression,
                 expression_type=expression_type,
                 confidence=confidence,

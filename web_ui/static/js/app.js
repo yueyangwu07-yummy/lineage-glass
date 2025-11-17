@@ -45,16 +45,15 @@ fileInput.addEventListener('change', (e) => {
 // ==================== Example SQL Data ====================
 const exampleSQLs = {
     ecommerce: `-- E-Commerce Analytics Pipeline
--- Trace: customer_segments.lifetime_value for complex multi-level lineage
+-- Try: customer_segments.lifetime_value
 
 CREATE TABLE clean_orders AS
 SELECT 
     order_id,
     customer_id,
-    quantity * unit_price AS subtotal,
-    quantity * unit_price * tax_rate AS tax_amount,
     quantity * unit_price * (1 + tax_rate) AS total_amount
-FROM raw_orders;
+FROM raw_orders
+WHERE status = 'completed';
 
 CREATE TABLE customer_summary AS
 SELECT 
@@ -72,65 +71,90 @@ SELECT
     cs.lifetime_value,
     CASE 
         WHEN cs.lifetime_value > 10000 THEN 'VIP'
-        WHEN cs.lifetime_value > 5000 THEN 'Premium'
         ELSE 'Regular'
     END AS customer_tier
 FROM customer_summary cs
 JOIN customers c ON cs.customer_id = c.customer_id;`,
 
-    hierarchy: `-- Organizational Hierarchy with Recursive CTE
--- Trace: org_report.hierarchy_path to see recursive lineage
+    hierarchy: `-- Employee Hierarchy (Simplified Recursive CTE)
+-- Try: org_chart.level_bonus
 
-WITH RECURSIVE employee_hierarchy AS (
+WITH RECURSIVE emp_levels AS (
+    -- Base case: top-level employees
     SELECT 
         emp_id,
         name,
-        1 as level,
-        name as hierarchy_path
+        salary,
+        manager_id,
+        0 as level
     FROM employees
     WHERE manager_id IS NULL
     
     UNION ALL
     
+    -- Recursive case
     SELECT 
         e.emp_id,
         e.name,
-        eh.level + 1,
-        eh.hierarchy_path || ' > ' || e.name
+        e.salary,
+        e.manager_id,
+        el.level + 1
     FROM employees e
-    JOIN employee_hierarchy eh ON e.manager_id = eh.emp_id
+    INNER JOIN emp_levels el ON e.manager_id = el.emp_id
+    WHERE el.level < 5
 )
-CREATE TABLE org_report AS
-SELECT * FROM employee_hierarchy;`,
+-- Create final report
+CREATE TABLE org_chart AS
+SELECT 
+    emp_id,
+    name,
+    salary,
+    level,
+    level * 10000 as level_bonus
+FROM emp_levels;`,
 
-    subqueries: `-- Sales Analysis with Multiple Subqueries
--- Trace: sales_analysis.avg_discount to see subquery composition
+    subqueries: `-- Product Sales Analysis (Simplified Subqueries)
+-- Try: product_analysis.avg_price_per_unit
 
-CREATE TABLE sales_analysis AS
+-- Step 1: Calculate product totals in subquery
+CREATE TABLE product_totals AS
+SELECT 
+    product_id,
+    SUM(quantity) as total_quantity,
+    SUM(amount) as total_amount
+FROM order_items
+GROUP BY product_id;
+
+-- Step 2: Join with products and add calculations
+CREATE TABLE product_analysis AS
 SELECT 
     p.product_id,
     p.product_name,
-    (SELECT SUM(quantity * unit_price) 
-     FROM order_items oi 
-     WHERE oi.product_id = p.product_id) as total_revenue,
-    (SELECT AVG(unit_price) 
-     FROM order_items oi 
-     WHERE oi.product_id = p.product_id) as avg_price,
-    p.list_price - (SELECT AVG(unit_price) 
-                    FROM order_items oi 
-                    WHERE oi.product_id = p.product_id) as avg_discount
-FROM products p;`,
+    p.category,
+    pt.total_quantity,
+    pt.total_amount,
+    pt.total_amount / NULLIF(pt.total_quantity, 0) as avg_price_per_unit
+FROM products p
+LEFT JOIN product_totals pt ON p.product_id = pt.product_id;`,
 
-    union: `-- Multi-Source Revenue Report
--- Trace: revenue_report.total_revenue to see UNION sources
+    union: `-- Multi-Channel Sales (UNION)
+-- Try: channel_summary.total_revenue
 
 WITH 
 online_sales AS (
-    SELECT product_id, quantity * unit_price as revenue, 'online' as channel
+    SELECT 
+        product_id,
+        quantity,
+        price,
+        quantity * price as revenue
     FROM online_orders
 ),
 store_sales AS (
-    SELECT product_id, quantity * sale_price as revenue, 'store' as channel
+    SELECT 
+        product_id,
+        quantity,
+        price,
+        quantity * price as revenue
     FROM store_transactions
 ),
 all_sales AS (
@@ -138,45 +162,34 @@ all_sales AS (
     UNION ALL
     SELECT * FROM store_sales
 )
-CREATE TABLE revenue_report AS
+CREATE TABLE channel_summary AS
 SELECT 
     product_id,
-    channel,
-    SUM(revenue) as total_revenue
+    COUNT(*) as order_count,
+    SUM(revenue) as total_revenue,
+    AVG(revenue) as avg_revenue
 FROM all_sales
-GROUP BY product_id, channel;`,
+GROUP BY product_id;`,
 
-    nested: `-- Nested Derived Tables with Multi-level Aggregation
--- Trace: advanced_metrics.revenue_per_active_day for deep nesting
+    nested: `-- Nested Aggregation
+-- Try: daily_metrics.revenue_per_customer
 
-CREATE TABLE advanced_metrics AS
+CREATE TABLE daily_sales AS
 SELECT 
-    daily.customer_id,
-    daily.avg_daily_spending,
-    monthly.total_monthly_revenue,
-    monthly.total_monthly_revenue / daily.days_active as revenue_per_active_day
-FROM (
-    SELECT 
-        customer_id,
-        COUNT(DISTINCT order_date) as days_active,
-        AVG(daily_total) as avg_daily_spending
-    FROM (
-        SELECT 
-            customer_id,
-            order_date,
-            SUM(order_amount) as daily_total
-        FROM orders
-        GROUP BY customer_id, order_date
-    ) daily_orders
-    GROUP BY customer_id
-) daily
-JOIN (
-    SELECT 
-        customer_id,
-        SUM(order_amount) as total_monthly_revenue
-    FROM orders
-    GROUP BY customer_id
-) monthly ON daily.customer_id = monthly.customer_id;`
+    DATE_TRUNC('day', order_date) as sale_date,
+    customer_id,
+    SUM(amount) as daily_total
+FROM orders
+GROUP BY DATE_TRUNC('day', order_date), customer_id;
+
+CREATE TABLE daily_metrics AS
+SELECT 
+    sale_date,
+    COUNT(DISTINCT customer_id) as customer_count,
+    SUM(daily_total) as total_revenue,
+    SUM(daily_total) / COUNT(DISTINCT customer_id) as revenue_per_customer
+FROM daily_sales
+GROUP BY sale_date;`
 };
 
 // ==================== Load Example Button ====================
@@ -470,6 +483,25 @@ async function showFieldLineageView(table, column) {
         
         const data = await response.json();
         
+        // Debug: Log the received data
+        console.log('Field lineage data:', data);
+        console.log('Graph nodes:', data.graph?.nodes?.length || 0);
+        console.log('Graph edges:', data.graph?.edges?.length || 0);
+        console.log('Full graph data:', JSON.stringify(data.graph, null, 2));
+        
+        if (!data.graph || !data.graph.nodes || data.graph.nodes.length === 0) {
+            console.error('No graph data received or empty nodes');
+            showError('No lineage data available for this field');
+            backToTableView();
+            return;
+        }
+        
+        if (data.graph.nodes.length === 1) {
+            console.warn('Only 1 node in graph - lineage may be incomplete');
+            console.warn('Node data:', data.graph.nodes[0]);
+            console.warn('Path data:', data.path);
+        }
+        
         updateViewControls('field');
         document.getElementById('current-field-name').textContent = data.field;
         document.getElementById('field-view-info').classList.remove('hidden');
@@ -526,12 +558,26 @@ function updateViewControls(view) {
 }
 
 function renderFieldGraph(graphData) {
+    // Debug: Log graph data before rendering
+    console.log('Rendering field graph:', {
+        nodeCount: graphData.nodes?.length || 0,
+        edgeCount: graphData.edges?.length || 0,
+        nodes: graphData.nodes,
+        edges: graphData.edges
+    });
+    
+    if (!graphData.nodes || graphData.nodes.length === 0) {
+        console.error('Cannot render: no nodes in graph data');
+        showError('No nodes to display in lineage graph');
+        return;
+    }
+    
     cy = cytoscape({
         container: document.getElementById('cy'),
         
         elements: {
-            nodes: graphData.nodes,
-            edges: graphData.edges
+            nodes: graphData.nodes || [],
+            edges: graphData.edges || []
         },
         
         style: [
@@ -581,7 +627,7 @@ function renderFieldGraph(graphData) {
                 }
             },
             {
-                selector: 'edge[is_aggregate = true]',
+                selector: 'edge[is_aggregate]',
                 style: {
                     'line-style': 'dashed',
                     'line-dash-pattern': [8, 4],
