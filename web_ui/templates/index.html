@@ -11,6 +11,10 @@
     <!-- Cytoscape.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     
+    <!-- Dagre layout library -->
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -18,7 +22,15 @@
     <!-- Header -->
     <header class="bg-blue-600 text-white p-4 shadow-md">
         <div class="container mx-auto flex items-center justify-between">
-            <h1 class="text-2xl font-bold">🔍 Lineage Glass</h1>
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold">🔍 Lineage Glass</h1>
+                <button 
+                    id="btn-help" 
+                    class="text-blue-100 hover:text-white text-sm px-3 py-1 rounded border border-blue-400 hover:border-white transition"
+                >
+                    ❓ Help
+                </button>
+            </div>
             <p class="text-blue-100">SQL Field-Level Lineage Analyzer</p>
         </div>
     </header>
@@ -132,46 +144,104 @@ JOIN sales_summary ss ON p.id = ss.product_id;"></textarea>
                 <!-- Center: Graph -->
                 <div class="col-span-6">
                     <div class="bg-white rounded-lg shadow-md p-4">
-                        <h3 class="text-lg font-semibold mb-3">🔗 Lineage Graph</h3>
-                        
-                        <!-- Search Box -->
-                        <div class="mb-3">
-                            <input 
-                                type="text" 
-                                id="search-box"
-                                class="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                                placeholder="🔍 Search tables or columns..."
-                            >
+                        <!-- Title bar -->
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-lg font-semibold">🔗 Lineage Graph</h3>
+                            
+                            <!-- View switching buttons -->
+                            <div id="view-controls" class="flex gap-2">
+                                <button 
+                                    id="btn-table-view" 
+                                    class="view-btn active text-sm px-3 py-1 rounded"
+                                >
+                                    📊 Table View
+                                </button>
+                                <button 
+                                    id="btn-field-view" 
+                                    class="view-btn text-sm px-3 py-1 rounded hidden"
+                                >
+                                    🔍 Field View
+                                </button>
+                            </div>
                         </div>
                         
+                        <!-- Field view info bar -->
+                        <div id="field-view-info" class="hidden mb-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <span class="font-semibold text-blue-800">Viewing field: </span>
+                                    <span id="current-field-name" class="text-blue-900 font-mono"></span>
+                                </div>
+                                <button 
+                                    id="btn-back-to-table" 
+                                    class="text-blue-600 hover:text-blue-800 text-sm"
+                                >
+                                    ← Back to Table View
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Graph container -->
                         <div id="cy" class="border border-gray-200 rounded" style="height: 500px;"></div>
                         
-                        <!-- Legend -->
-                        <div class="mt-3 flex gap-4 text-sm">
-                            <div class="flex items-center gap-1">
-                                <div class="w-4 h-4 rounded-full bg-blue-400"></div>
-                                <span>Table</span>
+                        <!-- Legend and hints -->
+                        <div class="mt-3">
+                            <!-- Operation hints -->
+                            <div id="table-view-hint" class="text-sm text-gray-600 mb-2">
+                                <p>💡 Click nodes to view details • Click column name to view field lineage • Scroll to zoom • Drag to pan</p>
                             </div>
-                            <div class="flex items-center gap-1">
-                                <div class="w-4 h-4 rounded-full bg-green-400"></div>
-                                <span>View</span>
+                            <div id="field-view-hint" class="hidden text-sm text-gray-600 mb-2">
+                                <p>💡 Showing complete lineage path • Click nodes for details • Scroll to zoom • Drag to pan</p>
                             </div>
-                            <div class="flex items-center gap-1">
-                                <div class="w-4 h-4 rounded-full bg-yellow-400"></div>
-                                <span>CTE</span>
+                            
+                            <!-- Legends -->
+                            <div id="table-legend" class="mt-2 p-3 bg-gray-50 rounded border">
+                                <div class="text-xs font-semibold text-gray-700 mb-2">Legend - Table Types:</div>
+                                <div class="flex gap-4 text-xs flex-wrap">
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-blue-400 flex items-center justify-center text-xs">📦</div>
+                                        <span class="text-gray-700">Table</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center text-xs">👁️</div>
+                                        <span class="text-gray-700">View</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-yellow-400 flex items-center justify-center text-xs">🔄</div>
+                                        <span class="text-gray-700">CTE</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-purple-400 flex items-center justify-center text-xs">📊</div>
+                                        <span class="text-gray-700">Subquery</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-gray-400 flex items-center justify-center text-xs">🌐</div>
+                                        <span class="text-gray-700">External</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-1">
-                                <div class="w-4 h-4 rounded-full bg-purple-400"></div>
-                                <span>Subquery</span>
+                            
+                            <div id="field-legend" class="hidden mt-2 p-3 bg-gray-50 rounded border">
+                                <div class="text-xs font-semibold text-gray-700 mb-2">Legend - Field Types:</div>
+                                <div class="flex gap-4 text-xs flex-wrap">
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-pink-400"></div>
+                                        <span class="text-gray-700">Aggregate</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full" style="background-color: #8b5cf6;"></div>
+                                        <span class="text-gray-700">Group By</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-blue-400"></div>
+                                        <span class="text-gray-700">Regular Field</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-12 h-1" style="background: repeating-linear-gradient(to right, #ec4899 0px, #ec4899 3px, transparent 3px, transparent 6px);"></div>
+                                        <span class="text-gray-700">Aggregate Edge</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-1">
-                                <div class="w-4 h-4 rounded-full bg-gray-400"></div>
-                                <span>External</span>
-                            </div>
-                        </div>
-                        
-                        <div class="mt-3 text-sm text-gray-600">
-                            <p>💡 Click nodes to view details • Zoom: Scroll • Pan: Drag</p>
                         </div>
                     </div>
                 </div>
@@ -188,6 +258,227 @@ JOIN sales_summary ss ON p.id = ss.product_id;"></textarea>
             </div>
         </section>
     </main>
+    
+    <!-- Help Modal -->
+    <div id="help-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-2xl font-bold">📖 Lineage Glass - User Guide</h2>
+                <button id="btn-close-help" class="text-gray-500 hover:text-gray-700 text-2xl">
+                    ×
+                </button>
+            </div>
+            
+            <div class="p-6 space-y-6">
+                <!-- Table Types Section -->
+                <section>
+                    <h3 class="text-xl font-semibold mb-4 text-blue-600">📊 Table Types</h3>
+                    
+                    <div class="space-y-4">
+                        <!-- TABLE -->
+                        <div class="flex gap-4 p-3 bg-gray-50 rounded">
+                            <div class="flex-shrink-0">
+                                <div class="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center text-2xl">
+                                    📦
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-lg">Table (Physical Table)</h4>
+                                <p class="text-sm text-gray-600 mt-1">Created via <code class="bg-gray-200 px-1">CREATE TABLE AS</code></p>
+                                <p class="text-sm mt-2">Persistent storage, can be referenced by subsequent queries</p>
+                                <pre class="text-xs bg-white p-2 rounded mt-2 border">CREATE TABLE dept_stats AS
+SELECT dept_id, AVG(salary) FROM employees GROUP BY dept_id;</pre>
+                            </div>
+                        </div>
+                        
+                        <!-- VIEW -->
+                        <div class="flex gap-4 p-3 bg-gray-50 rounded">
+                            <div class="flex-shrink-0">
+                                <div class="w-12 h-12 rounded-full bg-green-400 flex items-center justify-center text-2xl">
+                                    👁️
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-lg">View (Virtual Table)</h4>
+                                <p class="text-sm text-gray-600 mt-1">Created via <code class="bg-gray-200 px-1">CREATE VIEW</code></p>
+                                <p class="text-sm mt-2">No data storage, computed dynamically on query</p>
+                                <pre class="text-xs bg-white p-2 rounded mt-2 border">CREATE VIEW high_salary_employees AS
+SELECT * FROM employees WHERE salary > 50000;</pre>
+                            </div>
+                        </div>
+                        
+                        <!-- CTE -->
+                        <div class="flex gap-4 p-3 bg-gray-50 rounded">
+                            <div class="flex-shrink-0">
+                                <div class="w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center text-2xl">
+                                    🔄
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-lg">CTE (Common Table Expression)</h4>
+                                <p class="text-sm text-gray-600 mt-1">Defined in <code class="bg-gray-200 px-1">WITH</code> clause</p>
+                                <p class="text-sm mt-2">Temporary named result set, valid only within current query, can be recursive</p>
+                                <pre class="text-xs bg-white p-2 rounded mt-2 border">WITH monthly_sales AS (
+    SELECT dept_id, SUM(amount) as total
+    FROM sales GROUP BY dept_id
+)
+SELECT * FROM monthly_sales;</pre>
+                            </div>
+                        </div>
+                        
+                        <!-- SUBQUERY -->
+                        <div class="flex gap-4 p-3 bg-gray-50 rounded">
+                            <div class="flex-shrink-0">
+                                <div class="w-12 h-12 rounded-full bg-purple-400 flex items-center justify-center text-2xl">
+                                    📊
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-lg">Subquery (Derived Table)</h4>
+                                <p class="text-sm text-gray-600 mt-1">Nested inline query</p>
+                                <p class="text-sm mt-2">Temporary result, must have alias</p>
+                                <pre class="text-xs bg-white p-2 rounded mt-2 border">SELECT * FROM (
+    SELECT dept_id, COUNT(*) as cnt
+    FROM employees GROUP BY dept_id
+) AS dept_counts;</pre>
+                            </div>
+                        </div>
+                        
+                        <!-- EXTERNAL -->
+                        <div class="flex gap-4 p-3 bg-gray-50 rounded">
+                            <div class="flex-shrink-0">
+                                <div class="w-12 h-12 rounded-full bg-gray-400 flex items-center justify-center text-2xl">
+                                    🌐
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-lg">External (Source Table)</h4>
+                                <p class="text-sm text-gray-600 mt-1">Referenced but not defined in current SQL</p>
+                                <p class="text-sm mt-2">Data source, typically the starting point of lineage</p>
+                                <p class="text-xs mt-2 text-gray-600">Example: <code class="bg-gray-200 px-1">employees</code>, <code class="bg-gray-200 px-1">orders</code> tables</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Color Coding Section -->
+                <section>
+                    <h3 class="text-xl font-semibold mb-4 text-blue-600">🎨 Color Coding</h3>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <h4 class="font-semibold mb-3">Node Colors (Table Level)</h4>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-blue-400"></div>
+                                    <span>Blue - Physical Table</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-green-400"></div>
+                                    <span>Green - View</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-yellow-400"></div>
+                                    <span>Yellow - CTE</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-purple-400"></div>
+                                    <span>Purple - Subquery</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-gray-400"></div>
+                                    <span>Gray - External Source</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold mb-3">Node Colors (Field Level)</h4>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-pink-400"></div>
+                                    <span>Pink - Aggregate Field</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-purple-600"></div>
+                                    <span>Purple - Group By Field</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-blue-400"></div>
+                                    <span>Blue - Regular Field</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <h4 class="font-semibold mb-3">Edge Styles</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2">
+                                <div class="w-16 h-0.5 bg-blue-400"></div>
+                                <span>Solid Blue - Data flow direction</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-16 h-1" style="background: repeating-linear-gradient(to right, #ec4899 0px, #ec4899 4px, transparent 4px, transparent 8px);"></div>
+                                <span>Dashed Pink - Aggregate transformation</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Quick Tips Section -->
+                <section>
+                    <h3 class="text-xl font-semibold mb-4 text-blue-600">💡 Quick Tips</h3>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div class="space-y-2">
+                            <h4 class="font-semibold">Table View</h4>
+                            <ul class="list-disc list-inside space-y-1 text-gray-700">
+                                <li>Click node → View table details</li>
+                                <li>Click column name → Field lineage</li>
+                                <li>Scroll → Zoom in/out</li>
+                                <li>Drag → Pan the graph</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="space-y-2">
+                            <h4 class="font-semibold">Field View</h4>
+                            <ul class="list-disc list-inside space-y-1 text-gray-700">
+                                <li>Shows complete lineage path</li>
+                                <li>Traces from target to source</li>
+                                <li>Displays transformations</li>
+                                <li>Click node → View details</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Example Section -->
+                <section>
+                    <h3 class="text-xl font-semibold mb-4 text-blue-600">📝 Example Analysis</h3>
+                    
+                    <div class="bg-blue-50 p-4 rounded border border-blue-200">
+                        <p class="text-sm font-semibold mb-2">Try this SQL:</p>
+                        <pre class="text-xs bg-white p-3 rounded border overflow-x-auto">WITH sales_summary AS (
+    SELECT product_id, SUM(amount) as total_sales
+    FROM sales
+    GROUP BY product_id
+)
+SELECT 
+    p.name as product_name,
+    ss.total_sales
+FROM products p
+JOIN sales_summary ss ON p.id = ss.product_id
+WHERE ss.total_sales > 1000;</pre>
+                        <p class="text-sm mt-3 text-gray-700">
+                            This will show: CTE (yellow), External tables (gray), 
+                            Aggregate fields (pink), and complete lineage paths.
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
     
     <!-- Footer -->
     <footer class="text-center text-gray-500 text-sm py-4 mt-8">

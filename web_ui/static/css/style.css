@@ -61,3 +61,59 @@
     background-color: #fafafa;
 }
 
+/* View Control Buttons */
+.view-btn {
+    background-color: #e5e7eb;
+    color: #374151;
+    transition: all 0.2s;
+    border: 1px solid #d1d5db;
+}
+
+.view-btn:hover {
+    background-color: #d1d5db;
+}
+
+.view-btn.active {
+    background-color: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
+
+/* Field View Info Banner */
+#field-view-info {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Column items in detail panel - make clickable */
+.column-item {
+    padding: 0.5rem;
+    margin-left: 1rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+    cursor: pointer;
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+}
+
+.column-item:hover {
+    background-color: #dbeafe;
+    color: #3b82f6;
+}
+
+/* Field node styling */
+.field-node {
+    border: 2px solid #ec4899;
+}
+
+

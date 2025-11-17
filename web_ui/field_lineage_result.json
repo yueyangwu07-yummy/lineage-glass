@@ -1,0 +1,34 @@
+{
+  "field": "result.total_sales",
+  "graph": {
+    "edges": [],
+    "nodes": [
+      {
+        "data": {
+          "aggregate_function": null,
+          "badge": "",
+          "column": "total_sales",
+          "id": "result.total_sales",
+          "is_aggregate": false,
+          "is_group_by": false,
+          "label": "total_sales\n(result)",
+          "level": 0,
+          "table": "result",
+          "transformation": "ss.total_sales"
+        }
+      }
+    ]
+  },
+  "path": [
+    {
+      "aggregate_function": null,
+      "column": "total_sales",
+      "is_aggregate": false,
+      "is_group_by": false,
+      "level": 0,
+      "sources": [],
+      "table": "result",
+      "transformation": "ss.total_sales"
+    }
+  ]
+}
