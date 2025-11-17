@@ -1,0 +1,24 @@
+{
+  "raw_orders": [
+    "order_id",
+    "customer_id",
+    "amount",
+    "tax",
+    "status",
+    "order_date"
+  ],
+  "raw_orders_incremental": [
+    "order_id",
+    "customer_id",
+    "amount",
+    "tax",
+    "status",
+    "order_date"
+  ],
+  "customers": [
+    "customer_id",
+    "name",
+    "email"
+  ]
+}
+

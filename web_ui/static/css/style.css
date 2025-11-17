@@ -1,0 +1,63 @@
+/* Tab Buttons */
+.tab-button {
+    padding: 0.5rem 1rem;
+    margin-right: 0.5rem;
+    border-radius: 0.375rem;
+    background-color: #e5e7eb;
+    color: #374151;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+}
+
+.tab-button:hover {
+    background-color: #d1d5db;
+}
+
+.tab-button.active {
+    background-color: #3b82f6;
+    color: white;
+}
+
+/* Input Panels */
+.input-panel {
+    transition: opacity 0.2s;
+}
+
+/* Table List Items */
+.table-item {
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #e5e7eb;
+}
+
+.table-item:hover {
+    background-color: #f3f4f6;
+    border-color: #3b82f6;
+}
+
+.table-item.selected {
+    background-color: #dbeafe;
+    border-color: #3b82f6;
+}
+
+/* Column Items */
+.column-item {
+    padding: 0.5rem;
+    margin-left: 1rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+    cursor: pointer;
+}
+
+.column-item:hover {
+    color: #3b82f6;
+}
+
+/* Cytoscape Container */
+#cy {
+    background-color: #fafafa;
+}
+
