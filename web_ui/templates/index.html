@@ -156,24 +156,65 @@ JOIN sales_summary ss ON p.id = ss.product_id;"></textarea>
                 <!-- Center: Graph -->
                 <div class="col-span-6">
                     <div class="bg-white rounded-lg shadow-md p-4">
-                        <!-- Title bar -->
+                        <!-- Title bar and toolbar -->
                         <div class="flex justify-between items-center mb-3">
                             <h3 class="text-lg font-semibold">🔗 Lineage Graph</h3>
                             
-                            <!-- View switching buttons -->
-                            <div id="view-controls" class="flex gap-2">
-                                <button 
-                                    id="btn-table-view" 
-                                    class="view-btn active text-sm px-3 py-1 rounded"
-                                >
-                                    📊 Table View
-                                </button>
-                                <button 
-                                    id="btn-field-view" 
-                                    class="view-btn text-sm px-3 py-1 rounded hidden"
-                                >
-                                    🔍 Field View
-                                </button>
+                            <div class="flex gap-3 items-center">
+                                <!-- Graph control toolbar -->
+                                <div class="flex gap-1 bg-gray-100 rounded p-1">
+                                    <button 
+                                        id="btn-reset" 
+                                        class="graph-tool-btn"
+                                        title="Reset view (Fit + Center)"
+                                    >
+                                        ↺ Reset
+                                    </button>
+                                    <button 
+                                        id="btn-center" 
+                                        class="graph-tool-btn"
+                                        title="Center graph"
+                                    >
+                                        🎯
+                                    </button>
+                                    <button 
+                                        id="btn-fit" 
+                                        class="graph-tool-btn"
+                                        title="Fit to screen"
+                                    >
+                                        ⊡
+                                    </button>
+                                    <button 
+                                        id="btn-zoom-in" 
+                                        class="graph-tool-btn"
+                                        title="Zoom in (+)"
+                                    >
+                                        🔍+
+                                    </button>
+                                    <button 
+                                        id="btn-zoom-out" 
+                                        class="graph-tool-btn"
+                                        title="Zoom out (-)"
+                                    >
+                                        🔍−
+                                    </button>
+                                </div>
+                                
+                                <!-- View switching buttons -->
+                                <div id="view-controls" class="flex gap-2 border-l border-gray-300 pl-3">
+                                    <button 
+                                        id="btn-table-view" 
+                                        class="view-btn active text-sm px-3 py-1 rounded"
+                                    >
+                                        📊 Table
+                                    </button>
+                                    <button 
+                                        id="btn-field-view" 
+                                        class="view-btn text-sm px-3 py-1 rounded hidden"
+                                    >
+                                        🔍 Field
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
@@ -199,8 +240,9 @@ JOIN sales_summary ss ON p.id = ss.product_id;"></textarea>
                         <!-- Legend and hints -->
                         <div class="mt-3">
                             <!-- Operation hints -->
-                            <div id="table-view-hint" class="text-sm text-gray-600 mb-2">
-                                <p>💡 Click nodes to view details • Click column name to view field lineage • Scroll to zoom • Drag to pan</p>
+                            <div id="table-view-hint" class="text-sm text-gray-600 mb-2 bg-blue-50 p-2 rounded">
+                                <strong>💡 Controls:</strong> Click nodes • Click column names • Drag to pan • Scroll to zoom
+                                <span class="ml-2 text-blue-700">| Keyboard: R(reset), C(center), F(fit), +/-(zoom)</span>
                             </div>
                             <div id="field-view-hint" class="hidden text-sm text-gray-600 mb-2">
                                 <p>💡 Showing complete lineage path • Click nodes for details • Scroll to zoom • Drag to pan</p>

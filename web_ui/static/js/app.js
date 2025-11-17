@@ -763,12 +763,142 @@ document.getElementById('help-modal').addEventListener('click', (e) => {
     }
 });
 
-// ESC key to close help
+// ==================== Graph Control Toolbar ====================
+
+/**
+ * Reset view (Fit + Center + Reset Zoom)
+ */
+function resetGraphView() {
+    if (!cy) return;
+    
+    cy.animate({
+        fit: { padding: 50 },
+        center: true,
+        zoom: 1
+    }, {
+        duration: 400,
+        easing: 'ease-out'
+    });
+}
+
+/**
+ * Center graph (keep current zoom)
+ */
+function centerGraph() {
+    if (!cy) return;
+    
+    cy.animate({
+        center: true
+    }, {
+        duration: 300
+    });
+}
+
+/**
+ * Fit view (Fit to screen)
+ */
+function fitGraph() {
+    if (!cy) return;
+    
+    cy.animate({
+        fit: { padding: 50 }
+    }, {
+        duration: 300
+    });
+}
+
+/**
+ * Zoom in
+ */
+function zoomIn() {
+    if (!cy) return;
+    
+    const currentZoom = cy.zoom();
+    const newZoom = Math.min(currentZoom * 1.3, 5);  // Max 5x
+    
+    cy.animate({
+        zoom: {
+            level: newZoom,
+            position: { x: cy.width() / 2, y: cy.height() / 2 }
+        }
+    }, {
+        duration: 200
+    });
+}
+
+/**
+ * Zoom out
+ */
+function zoomOut() {
+    if (!cy) return;
+    
+    const currentZoom = cy.zoom();
+    const newZoom = Math.max(currentZoom * 0.7, 0.2);  // Min 0.2x
+    
+    cy.animate({
+        zoom: {
+            level: newZoom,
+            position: { x: cy.width() / 2, y: cy.height() / 2 }
+        }
+    }, {
+        duration: 200
+    });
+}
+
+// ==================== Event Listeners ====================
+
+// Toolbar button event listeners
+document.getElementById('btn-reset').addEventListener('click', resetGraphView);
+document.getElementById('btn-center').addEventListener('click', centerGraph);
+document.getElementById('btn-fit').addEventListener('click', fitGraph);
+document.getElementById('btn-zoom-in').addEventListener('click', zoomIn);
+document.getElementById('btn-zoom-out').addEventListener('click', zoomOut);
+
+// Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
+    // Handle ESC key for help modal and field view
     if (e.key === 'Escape') {
         const modal = document.getElementById('help-modal');
         if (!modal.classList.contains('hidden')) {
             modal.classList.add('hidden');
+            return;
+        }
+        
+        if (currentView === 'field') {
+            backToTableView();
+            return;
         }
     }
+    
+    // Ignore keys when typing in input fields
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
+        return;
+    }
+    
+    if (!cy) return;
+    
+    switch(e.key.toLowerCase()) {
+        case 'r':
+            resetGraphView();
+            break;
+        case 'c':
+            centerGraph();
+            break;
+        case 'f':
+            fitGraph();
+            break;
+        case '=':
+        case '+':
+            e.preventDefault();
+            zoomIn();
+            break;
+        case '-':
+        case '_':
+            e.preventDefault();
+            zoomOut();
+            break;
+    }
 });
+
+// Log keyboard shortcuts (optional)
+console.log('🎮 Keyboard shortcuts: R(reset), C(center), F(fit), +/-(zoom), ESC(back)');

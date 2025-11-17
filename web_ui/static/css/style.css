@@ -116,4 +116,42 @@
     border: 2px solid #ec4899;
 }
 
+/* Graph Tool Buttons */
+.graph-tool-btn {
+    padding: 0.4rem 0.6rem;
+    background-color: white;
+    color: #4b5563;
+    border: none;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.graph-tool-btn:hover {
+    background-color: #3b82f6;
+    color: white;
+    transform: translateY(-1px);
+}
+
+.graph-tool-btn:active {
+    transform: translateY(0);
+}
+
+.graph-tool-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Reset button special style */
+#btn-reset {
+    font-weight: 600;
+    color: #3b82f6;
+}
+
+#btn-reset:hover {
+    background-color: #3b82f6;
+    color: white;
+}
+
 
