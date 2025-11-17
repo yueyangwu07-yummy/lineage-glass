@@ -360,6 +360,20 @@ def trace_field_lineage(result, table, column, visited=None, level=0, max_depth=
     
     # Get column lineage
     if column not in table_def.columns:
+        # If table is EXTERNAL type, treat missing columns as leaf nodes (source fields)
+        from lineage_analyzer.models.table_definition import TableType
+        if table_def.table_type == TableType.EXTERNAL:
+            return [{
+                'level': level,
+                'table': table_normalized,
+                'column': column,
+                'transformation': None,
+                'is_aggregate': False,
+                'aggregate_function': None,
+                'is_group_by': False,
+                'sources': []
+            }]
+        # For other table types, return empty if column not found
         return []
     
     col_lineage = table_def.columns[column]
